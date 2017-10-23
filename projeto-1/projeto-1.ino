@@ -20,7 +20,7 @@ const char* TOPIC_GATE_STATUS = "gate";
 const char* TOPIC_GATE_COMMAND = "gate/toggle";
 
 const int DEVICE_GATE = 0;
-const int DEVICE_LED = 1;
+const int DEVICE_LIGHT = 1;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   int payloadInt = payload[0] - '0';
@@ -42,11 +42,11 @@ const int LED_PIN = 2;
 const int SERVO_PIN = 3;
 Servo servo;
 
-const int BTN_LED_PIN = 6;
+const int BTN_LIGHT_PIN = 6;
 const int BTN_GATE_PIN = 7;
 
-int prevBtnLedState = LOW;
-int prevBtnGateState = HIGH;
+int lightState = 0;
+int gateState = 0;
 
 void setLight(int state) {
   if (state) {
@@ -54,6 +54,8 @@ void setLight(int state) {
   } else {
     digitalWrite(LED_PIN, LOW);
   }
+  lightState = state;
+  mqttUpdateStatus(DEVICE_LIGHT, state);
 }
 
 void setGate(int state) {
@@ -64,20 +66,28 @@ void setGate(int state) {
     servo.write(0);
     delay(1000);
   }
-  updateStatus(DEVICE_GATE, state);
+  gateState = state;
+  mqttUpdateStatus(DEVICE_GATE, state);
 }
 
-void updateStatus(int device, int state) {
+void toggleGate() {
+  setGate(!gateState);
+}
+
+void toggleLight() {
+  setLight(!lightState);
+}
+
+void mqttUpdateStatus(int device, int state) {
   const char* topic;
   switch (device) {
     case DEVICE_GATE:
       topic = TOPIC_GATE_STATUS;
       break;
-    case DEVICE_LED:
+    case DEVICE_LIGHT:
       topic = TOPIC_LED_STATUS;
       break;
   }
-
   client.publish(topic, state + '0');
 }
 
@@ -85,12 +95,16 @@ void setup()
 {
   Serial.begin(9600);
   while (!Serial) {}
+  servo.attach(SERVO_PIN);
 
+  #ifdef ONLINE
   if (!Ethernet.begin(mac)) {
     Serial.println("DHCP Failed");
   } else {
     Serial.println(Ethernet.localIP());
   }
+  #endif
+
   Serial.println("Connecting...");
   const char* clientId = "arduino-42";
 
@@ -103,11 +117,31 @@ void setup()
   } else {
     Serial.println("Failed to connect to MQTT server");
   }
+}
 
-  servo.attach(SERVO_PIN);
+int btnLightStatus = 0;
+int btnGateStatus = 0;
+
+void trackGateButton() {
+  int status = digitalRead(BTN_GATE_PIN);
+  if (status && !btnGateStatus) {
+    toggleGate();
+  }
+  btnGateStatus = status;
+}
+
+void trackLightButton() {
+  int status = digitalRead(BTN_LIGHT_PIN);
+  if (status && !btnLightStatus) {
+    toggleGate();
+  }
+  btnLightStatus = status;
 }
 
 void loop()
 {
   client.loop();
+
+  trackGateButton();
+  trackLightButton();
 }
