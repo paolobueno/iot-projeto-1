@@ -1,0 +1,3 @@
+[submodule "projeto-1/libraries/SerialPubSubClient"]
+	path = projeto-1/libraries/SerialPubSubClient
+	url = git@github.com:paolobueno/SerialPubSubClient.git
