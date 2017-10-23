@@ -1,11 +1,14 @@
 #include <Servo.h>
 
 #ifdef ONLINE
+#include <PubSubClient.h>
+#else
+#include <SerialPubSubClient.h>
+#endif
 
 #include <UIPEthernet.h>
 #include <utility/logging.h>
 EthernetClient ethClient;
-#include <PubSubClient.h>
 
 IPAddress MQTT_SERVER(192, 168, 3, 110);
 const int MQTT_PORT = 1883;
@@ -16,22 +19,12 @@ const char* TOPIC_LED_COMMAND = "led/toggle";
 const char* TOPIC_GATE_STATUS = "gate";
 const char* TOPIC_GATE_COMMAND = "gate/toggle";
 
-
-PubSubClient client(MQTT_SERVER, MQTT_PORT, callback, ethClient);
-#endif
+const int DEVICE_GATE = 0;
+const int DEVICE_LED = 1;
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  char* payloadCharPtr = payload;
-  payloadCharPtr[length] = 0;
-  String payloadStr = String(payloadCharPtr);
-  int payloadInt = payloadStr.toInt();
-  
+  int payloadInt = payload[0] - '0';
   String topicStr = String(topic);
-  
-  Serial.print("Topic received: "); Serial.println(topic);
-  Serial.print("Message: "); Serial.println(msg);
-
-  Serial.flush();
 
   if(topic == TOPIC_LED_COMMAND) {
     setLight(payloadInt);
@@ -39,6 +32,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
     setGate(payloadInt);
   }
 }
+
+PubSubClient client(MQTT_SERVER, MQTT_PORT, callback, ethClient);
 
 // Atualizar ultimo valor para ID do seu Kit para evitar duplicatas
 const byte mac[] = { 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0x42 };
@@ -62,20 +57,18 @@ void setLight(int state) {
 }
 
 void setGate(int state) {
-  if (estado) {
-    Servo.write(90);
+  if (state) {
+    servo.write(90);
     delay(1000);
   } else {
-    Servo.write(0);
+    servo.write(0);
     delay(1000);
   }
   updateStatus(DEVICE_GATE, state);
 }
 
-const int DEVICE_GATE = 0;
-const int DEVICE_LED = 1;
 void updateStatus(int device, int state) {
-  char* topic;
+  const char* topic;
   switch (device) {
     case DEVICE_GATE:
       topic = TOPIC_GATE_STATUS;
@@ -85,33 +78,13 @@ void updateStatus(int device, int state) {
       break;
   }
 
-#ifdef ONLINE
-  client.publish(topic, state);
-#else
-  Serial.print("Status update: "); Serial.print(topic);
-  Serial.print(" | "); Serial.println(state);
-#endif
-
+  client.publish(topic, state + '0');
 }
-
-#ifndef ONLINE
-void SerialEvent() {
-  // mensagem serial seria "{topico}|{payload}\n"
-  while (Serial.available()) {
-    String topic = Serial.readStringUntil('|');
-    String payload = Serial.readStringUntil('\n');
-    payload.trim();
-    callback(topic.c_str(), payload.c_str(), payload.length());
-  }
-}
-#endif
 
 void setup()
 {
   Serial.begin(9600);
   while (!Serial) {}
-
-#ifdef ONLINE
 
   if (!Ethernet.begin(mac)) {
     Serial.println("DHCP Failed");
@@ -119,7 +92,7 @@ void setup()
     Serial.println(Ethernet.localIP());
   }
   Serial.println("Connecting...");
-  char* clientId = "arduino-42";
+  const char* clientId = "arduino-42";
 
   if (client.connect(clientId)) {
     Serial.println("Connected");
@@ -130,9 +103,8 @@ void setup()
   } else {
     Serial.println("Failed to connect to MQTT server");
   }
-#endif
 
-  Servo.attach(SERVO_PIN);
+  servo.attach(SERVO_PIN);
 }
 
 void loop()
