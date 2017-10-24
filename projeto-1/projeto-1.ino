@@ -116,6 +116,25 @@ void mqttUpdate(int device, int state) {
   client.publish(topic, payload);
 }
 
+int btnLightStatus = 0;
+int btnGateStatus = 0;
+
+void trackGateButton() {
+  int status = digitalRead(BTN_GATE_PIN);
+  if (status && !btnGateStatus) {
+    toggleGate();
+  }
+  btnGateStatus = status;
+}
+
+void trackLightButton() {
+  int status = digitalRead(BTN_LIGHT_PIN);
+  if (status && !btnLightStatus) {
+    toggleLight();
+  }
+  btnLightStatus = status;
+}
+
 void setup()
 {
   Serial.begin(9600);
@@ -142,25 +161,6 @@ void setup()
   } else {
     Serial.println("Failed to connect to MQTT server");
   }
-}
-
-int btnLightStatus = 0;
-int btnGateStatus = 0;
-
-void trackGateButton() {
-  int status = digitalRead(BTN_GATE_PIN);
-  if (status && !btnGateStatus) {
-    toggleGate();
-  }
-  btnGateStatus = status;
-}
-
-void trackLightButton() {
-  int status = digitalRead(BTN_LIGHT_PIN);
-  if (status && !btnLightStatus) {
-    toggleLight();
-  }
-  btnLightStatus = status;
 }
 
 void loop()
