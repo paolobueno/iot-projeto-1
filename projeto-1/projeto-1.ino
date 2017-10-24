@@ -1,23 +1,24 @@
-#include <Servo.h>
-
 #ifdef ONLINE
 #include <PubSubClient.h>
-#else
-#include <SerialPubSubClient.h>
-#endif
 
 #include <UIPEthernet.h>
 #include <utility/logging.h>
 EthernetClient ethClient;
+// Atualizar ultimo valor para ID do seu Kit para evitar duplicatas
+const byte mac[] = { 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0x42 };
 
 IPAddress MQTT_SERVER(192, 168, 3, 110);
 const int MQTT_PORT = 1883;
+#else
+#include <SerialPubSubClient.h>
+#endif
+
 
 const char* TOPIC_LED_STATUS = "led";
-const char* TOPIC_LED_COMMAND = "led/toggle";
+const char* TOPIC_LED_COMMAND = "led/set";
 
 const char* TOPIC_GATE_STATUS = "gate";
-const char* TOPIC_GATE_COMMAND = "gate/toggle";
+const char* TOPIC_GATE_COMMAND = "gate/set";
 
 const int DEVICE_GATE = 0;
 const int DEVICE_LIGHT = 1;
@@ -25,22 +26,28 @@ const int DEVICE_LIGHT = 1;
 void callback(char* topic, byte* payload, unsigned int length) {
   int payloadInt = payload[0] - '0';
   String topicStr = String(topic);
+  mqttFeedbackIn();
 
-  if(topic == TOPIC_LED_COMMAND) {
+  if(topicStr == TOPIC_LED_COMMAND) {
     setLight(payloadInt);
-  } else if (topic == TOPIC_GATE_COMMAND) {
+  }
+  if (topicStr == TOPIC_GATE_COMMAND) {
     setGate(payloadInt);
   }
 }
 
+#ifdef ONLINE
 PubSubClient client(MQTT_SERVER, MQTT_PORT, callback, ethClient);
+#else
+PubSubClient client(callback);
+#endif
 
-// Atualizar ultimo valor para ID do seu Kit para evitar duplicatas
-const byte mac[] = { 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0x42 };
+#include <Servo.h>
 
 const int LED_PIN = 2;
 const int SERVO_PIN = 3;
 Servo servo;
+const int BUZZER_PIN = 4;
 
 const int BTN_LIGHT_PIN = 6;
 const int BTN_GATE_PIN = 7;
@@ -55,19 +62,20 @@ void setLight(int state) {
     digitalWrite(LED_PIN, LOW);
   }
   lightState = state;
-  mqttUpdateStatus(DEVICE_LIGHT, state);
+  mqttUpdate(DEVICE_LIGHT, state);
 }
 
 void setGate(int state) {
   if (state) {
-    servo.write(90);
+    servo.write(80);
     delay(1000);
   } else {
     servo.write(0);
     delay(1000);
   }
   gateState = state;
-  mqttUpdateStatus(DEVICE_GATE, state);
+  mqttUpdate(DEVICE_GATE, state);
+  setLight(gateState);
 }
 
 void toggleGate() {
@@ -78,8 +86,24 @@ void toggleLight() {
   setLight(!lightState);
 }
 
-void mqttUpdateStatus(int device, int state) {
+const int TONE_DURATION = 150;
+void mqttFeedbackOut() {
+  tone(BUZZER_PIN, 1047, TONE_DURATION);
+  delay(TONE_DURATION);
+}
+void mqttFeedbackIn() {
+  tone(BUZZER_PIN, 131, TONE_DURATION);
+  delay(TONE_DURATION);
+}
+
+void mqttUpdate(int device, int state) {
   const char* topic;
+  const char* payload;
+  if(state) {
+    payload = "1";
+  } else {
+    payload = "0";
+  }
   switch (device) {
     case DEVICE_GATE:
       topic = TOPIC_GATE_STATUS;
@@ -88,7 +112,8 @@ void mqttUpdateStatus(int device, int state) {
       topic = TOPIC_LED_STATUS;
       break;
   }
-  client.publish(topic, state + '0');
+  mqttFeedbackOut();
+  client.publish(topic, payload);
 }
 
 void setup()
@@ -133,7 +158,7 @@ void trackGateButton() {
 void trackLightButton() {
   int status = digitalRead(BTN_LIGHT_PIN);
   if (status && !btnLightStatus) {
-    toggleGate();
+    toggleLight();
   }
   btnLightStatus = status;
 }
